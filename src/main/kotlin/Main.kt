@@ -12,7 +12,7 @@ fun main() {
     val token = System.getenv("TELEGRAM_BOT_TOKEN") ?: error("ERROR: TELEGRAM_BOT_TOKEN not set")
     val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
 
-    // HTTP-сервер для Render
+    // Фейковый HTTP-сервер потому что я бомжара и у меня нет денег на оплату background server
     thread {
         val server = HttpServer.create(InetSocketAddress(port), 0)
         server.createContext("/") { exchange ->
@@ -76,13 +76,14 @@ fun loadVoiceCommands(): List<VoiceCommand> {
         val oggFilename = "$indexStr.ogg"
         val oggPath = "voices/$oggFilename"
         val commandName = "voice$indexStr"
-        // Проверяем, существует ли файл
         if (classLoader.getResource(oggPath) != null) {
             commands.add(VoiceCommand(commandName, oggPath, description))
         } else {
-            println("⚠️ Пропущен: $oggFilename не найден в ресурсах.")
+            println("Пропущен: $oggFilename не найден в ресурсах.")
         }
     }
 
-    return commands.sortedBy { it.commandName }
+    return commands.sortedBy {
+        it.commandName.removePrefix("voice").toIntOrNull() ?: Int.MAX_VALUE
+    }
 }
