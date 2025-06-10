@@ -5,9 +5,7 @@ import com.github.kotlintelegrambot.dispatcher.message
 import com.github.kotlintelegrambot.entities.ChatId
 import com.github.kotlintelegrambot.entities.TelegramFile
 import com.sun.net.httpserver.HttpServer
-import java.io.File
 import java.net.InetSocketAddress
-import java.util.jar.JarFile
 import kotlin.concurrent.thread
 
 fun main() {
@@ -60,51 +58,31 @@ fun main() {
     bot.startPolling()
 }
 
-data class VoiceCommand(val commandName: String, val oggPath: String, val description: String) {
-    fun toTempFile(): File {
-        val stream = Thread.currentThread().contextClassLoader.getResourceAsStream(oggPath)
-            ?: error("Не найден ресурс $oggPath")
-        val temp = File.createTempFile(commandName, ".ogg")
-        stream.use { input -> temp.outputStream().use { output -> input.copyTo(output) } }
-        return temp
-    }
-}
-
 fun loadVoiceCommands(): List<VoiceCommand> {
     val classLoader = Thread.currentThread().contextClassLoader
-    val voicesUrl = classLoader.getResource("voices") ?: return emptyList()
-
-    val oggFiles = mutableListOf<String>()
-
-    if (voicesUrl.protocol == "jar") {
-        val jarPath = voicesUrl.path.substringAfter("file:").substringBefore("!/")
-        JarFile(jarPath).use { jar ->
-            val entries = jar.entries()
-            while (entries.hasMoreElements()) {
-                val entry = entries.nextElement()
-                if (entry.name.startsWith("voices/") && entry.name.endsWith(".ogg")) {
-                    oggFiles.add(entry.name)
-                }
-            }
-        }
-    } else {
-        val dir = File(voicesUrl.toURI())
-        dir.listFiles { f -> f.extension == "ogg" }?.forEach {
-            oggFiles.add("voices/${it.name}")
-        }
-    }
-
-    oggFiles.sort()
-
     val descriptionsStream = classLoader.getResourceAsStream("voices/descriptions.txt")
-        ?: error("Файл descriptions.txt не найден в voices/")
-    val descriptions = descriptionsStream.bufferedReader().readLines()
+        ?: error("Файл descriptions.txt не найден в resources/voices")
 
-    if (descriptions.size < oggFiles.size) {
-        error("Недостаточно описаний: ${descriptions.size} описаний на ${oggFiles.size} файлов")
+    val descriptionMap = descriptionsStream.bufferedReader().readLines()
+        .mapNotNull { line ->
+            val parts = line.split(" - ", limit = 2)
+            if (parts.size == 2) parts[0].trim() to parts[1].trim() else null
+        }
+        .toMap()
+
+    val commands = mutableListOf<VoiceCommand>()
+
+    for ((indexStr, description) in descriptionMap) {
+        val oggFilename = "$indexStr.ogg"
+        val oggPath = "voices/$oggFilename"
+        val commandName = "voice$indexStr"
+        // Проверяем, существует ли файл
+        if (classLoader.getResource(oggPath) != null) {
+            commands.add(VoiceCommand(commandName, oggPath, description))
+        } else {
+            println("⚠️ Пропущен: $oggFilename не найден в ресурсах.")
+        }
     }
 
-    return oggFiles.mapIndexed { index, oggPath ->
-        VoiceCommand("voice${index + 1}", oggPath, descriptions[index])
-    }
+    return commands.sortedBy { it.commandName }
 }
